@@ -4,6 +4,7 @@
     <title>Custom 3D Builder</title>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.babylonjs.com/materialsLibrary/babylon.gridMaterial.min.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylon.objFileLoader.min.js"></script>
     <style>
         #renderCanvas {
             width: 80%;
@@ -29,19 +30,25 @@
 </head>
 <body>
     <div id="sidebar">
-        <img src="box.png" id="box" class="draggable" onmousedown="startDrag(event, 'box')">
-        <img src="sphere.png" id="sphere" class="draggable" onmousedown="startDrag(event, 'sphere')">
+        <!-- Sidebar with draggable shapes -->
+        <img src="box_image.png" id="box" class="draggable" onmousedown="startDrag(event, 'box.obj')">
+        <img src="sphere_image.png" id="sphere" class="draggable" onmousedown="startDrag(event, 'sphere.obj')">
     </div>
     <canvas id="renderCanvas"></canvas>
     <script>
+        // Initialize Babylon.js engine and scene
         var canvas = document.getElementById("renderCanvas");
         var engine = new BABYLON.Engine(canvas, true);
         var scene = new BABYLON.Scene(engine);
+
+        // Set up camera and attach controls
         var camera = new BABYLON.ArcRotateCamera("Camera", Math.PI / 2, Math.PI / 4, 10, new BABYLON.Vector3(0, 1, 0), scene);
         camera.attachControl(canvas, true);
 
+        // Add a hemispheric light to the scene
         var light = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 1, 0), scene);
 
+        // Create a grid material for the ground
         var gridMaterial = new BABYLON.GridMaterial("grid", scene);
         gridMaterial.majorUnitFrequency = 5;
         gridMaterial.minorUnitVisibility = 0.45;
@@ -51,31 +58,38 @@
         gridMaterial.lineColor = new BABYLON.Color3(0.75, 0.75, 0.75);
         gridMaterial.opacity = 0.98;
 
+        // Create the ground mesh and apply the grid material
         var ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 100, height: 100}, scene);
         ground.material = gridMaterial;
 
+        // Variables to keep track of the selected mesh, preview mesh, and dragging state
         var selectedMesh = null;
         var previewMesh = null;
         var isDragging = false;
         var isMoving = false;
 
-        function startDrag(event, shape) {
+        // Function to start dragging a shape from the sidebar
+        function startDrag(event, shapePath) {
             event.preventDefault();
             if (previewMesh) {
                 previewMesh.dispose();
             }
-            previewMesh = shape === 'box' ? 
-                BABYLON.MeshBuilder.CreateBox("preview", {size: 2}, scene) : 
-                BABYLON.MeshBuilder.CreateSphere("preview", {diameter: 2}, scene);
-            previewMesh.visibility = 0.5;
-            isDragging = true;
-            document.addEventListener('mousemove', movePreviewMesh);
-            document.addEventListener('mouseup', endDrag);
+
+            // Import the preview mesh based on the OBJ file path
+            BABYLON.SceneLoader.ImportMesh("", "./path/to/your/obj/files/", shapePath, scene, function (meshes) {
+                previewMesh = meshes[0];
+                previewMesh.visibility = 0.5;
+                isDragging = true;
+                document.addEventListener('mousemove', movePreviewMesh);
+                document.addEventListener('mouseup', endDrag);
+            });
         }
 
+        // Function to move the preview mesh with the cursor
         function movePreviewMesh(event) {
             if (!isDragging) return;
 
+            // Use scene picking to get the position on the ground where the cursor is pointing
             var pickInfo = scene.pick(scene.pointerX, scene.pointerY, function (mesh) {
                 return mesh === ground;
             });
@@ -87,6 +101,7 @@
             }
         }
 
+        // Function to end dragging and place the shape on the ground
         function endDrag(event) {
             if (!isDragging) return;
 
@@ -95,8 +110,8 @@
             });
 
             if (pickInfo.hit && previewMesh) {
-                var shape = previewMesh.name.includes("box") ? "box" : "sphere";
-                addShape(shape, new BABYLON.Vector3(pickInfo.pickedPoint.x, 1, pickInfo.pickedPoint.z));
+                var shapePath = previewMesh.name;
+                addShape(shapePath, new BABYLON.Vector3(pickInfo.pickedPoint.x, 1, pickInfo.pickedPoint.z));
                 previewMesh.dispose();
                 previewMesh = null;
             }
@@ -106,16 +121,14 @@
             document.removeEventListener('mouseup', endDrag);
         }
 
-        function addShape(shape, position) {
-            var mesh;
-            if (shape === 'box') {
-                mesh = BABYLON.MeshBuilder.CreateBox("box", {size: 2}, scene);
-            } else if (shape === 'sphere') {
-                mesh = BABYLON.MeshBuilder.CreateSphere("sphere", {diameter: 2}, scene);
-            }
-            if (mesh) {
+        // Function to add a shape to the scene
+        function addShape(shapePath, position) {
+            // Import the final mesh based on the OBJ file path
+            BABYLON.SceneLoader.ImportMesh("", "./path/to/your/obj/files/", shapePath, scene, function (meshes) {
+                var mesh = meshes[0];
                 mesh.position = position || new BABYLON.Vector3(0, 1, 0);
                 mesh.actionManager = new BABYLON.ActionManager(scene);
+                // Add actions for selecting, highlighting, and moving the mesh
                 mesh.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnPickTrigger, function (evt) {
                     selectMesh(evt.source);
                 }));
@@ -139,9 +152,10 @@
                     isMoving = false;
                     camera.attachControl(canvas);
                 }));
-            }
+            });
         }
 
+        // Function to select a mesh
         function selectMesh(mesh) {
             if (selectedMesh) {
                 selectedMesh.renderOutline = false; // Remove outline from previously selected mesh
@@ -156,6 +170,7 @@
             selectedMesh.outlineWidth = 0.1; // Add outline to the newly selected mesh
         }
 
+        // Event handler for pointer move events to move the selected mesh
         scene.onPointerObservable.add(function (evt) {
             if (selectedMesh && isMoving && evt.type === BABYLON.PointerEventTypes.POINTERMOVE) {
                 var pickInfo = scene.pick(scene.pointerX, scene.pointerY, function (mesh) {
@@ -168,6 +183,7 @@
             }
         });
 
+        // Event handler for pointer down events to deselect a mesh
         scene.onPointerDown = function (evt, pickResult) {
             if (!pickResult.hit) {
                 if (selectedMesh) {
@@ -177,6 +193,7 @@
             }
         };
 
+        // Event listener for deleting the selected mesh
         document.addEventListener('keydown', function(event) {
             if (event.key === "Delete" && selectedMesh) {
                 selectedMesh.dispose();
@@ -184,10 +201,12 @@
             }
         });
 
+        // Run the render loop
         engine.runRenderLoop(function () {
             scene.render();
         });
 
+        // Resize the engine on window resize
         window.addEventListener("resize", function () {
             engine.resize();
         });
