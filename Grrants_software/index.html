@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Custom 3D Builder</title>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/materialsLibrary/babylon.gridMaterial.min.js"></script>
+    <style>
+        #renderCanvas {
+            width: 80%;
+            height: 100%;
+            float: left;
+            background: white;
+        }
+        #sidebar {
+            width: 20%;
+            height: 100%;
+            float: right;
+            background: #f0f0f0;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        .draggable {
+            width: 50px;
+            height: 50px;
+            margin: 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <img src="box.png" id="box" class="draggable" onmousedown="startDrag(event, 'box')">
+        <img src="sphere.png" id="sphere" class="draggable" onmousedown="startDrag(event, 'sphere')">
+    </div>
+    <canvas id="renderCanvas"></canvas>
+    <script>
+        var canvas = document.getElementById("renderCanvas");
+        var engine = new BABYLON.Engine(canvas, true);
+        var scene = new BABYLON.Scene(engine);
+        var camera = new BABYLON.ArcRotateCamera("Camera", Math.PI / 2, Math.PI / 4, 10, new BABYLON.Vector3(0, 1, 0), scene);
+        camera.attachControl(canvas, true);
+
+        var light = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 1, 0), scene);
+
+        var gridMaterial = new BABYLON.GridMaterial("grid", scene);
+        gridMaterial.majorUnitFrequency = 5;
+        gridMaterial.minorUnitVisibility = 0.45;
+        gridMaterial.gridRatio = 1;
+        gridMaterial.backFaceCulling = false;
+        gridMaterial.mainColor = new BABYLON.Color3(1, 1, 1);
+        gridMaterial.lineColor = new BABYLON.Color3(0.75, 0.75, 0.75);
+        gridMaterial.opacity = 0.98;
+
+        var ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 100, height: 100}, scene);
+        ground.material = gridMaterial;
+
+        var selectedMesh = null;
+        var previewMesh = null;
+        var isDragging = false;
+        var isMoving = false;
+
+        function startDrag(event, shape) {
+            event.preventDefault();
+            if (previewMesh) {
+                previewMesh.dispose();
+            }
+            previewMesh = shape === 'box' ? 
+                BABYLON.MeshBuilder.CreateBox("preview", {size: 2}, scene) : 
+                BABYLON.MeshBuilder.CreateSphere("preview", {diameter: 2}, scene);
+            previewMesh.visibility = 0.5;
+            isDragging = true;
+            document.addEventListener('mousemove', movePreviewMesh);
+            document.addEventListener('mouseup', endDrag);
+        }
+
+        function movePreviewMesh(event) {
+            if (!isDragging) return;
+
+            var pickInfo = scene.pick(scene.pointerX, scene.pointerY, function (mesh) {
+                return mesh === ground;
+            });
+
+            if (pickInfo.hit && previewMesh) {
+                previewMesh.position.x = pickInfo.pickedPoint.x;
+                previewMesh.position.z = pickInfo.pickedPoint.z;
+                previewMesh.position.y = 1;
+            }
+        }
+
+        function endDrag(event) {
+            if (!isDragging) return;
+
+            var pickInfo = scene.pick(scene.pointerX, scene.pointerY, function (mesh) {
+                return mesh === ground;
+            });
+
+            if (pickInfo.hit && previewMesh) {
+                var shape = previewMesh.name.includes("box") ? "box" : "sphere";
+                addShape(shape, new BABYLON.Vector3(pickInfo.pickedPoint.x, 1, pickInfo.pickedPoint.z));
+                previewMesh.dispose();
+                previewMesh = null;
+            }
+
+            isDragging = false;
+            document.removeEventListener('mousemove', movePreviewMesh);
+            document.removeEventListener('mouseup', endDrag);
+        }
+
+        function addShape(shape, position) {
+            var mesh;
+            if (shape === 'box') {
+                mesh = BABYLON.MeshBuilder.CreateBox("box", {size: 2}, scene);
+            } else if (shape === 'sphere') {
+                mesh = BABYLON.MeshBuilder.CreateSphere("sphere", {diameter: 2}, scene);
+            }
+            if (mesh) {
+                mesh.position = position || new BABYLON.Vector3(0, 1, 0);
+                mesh.actionManager = new BABYLON.ActionManager(scene);
+                mesh.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnPickTrigger, function (evt) {
+                    selectMesh(evt.source);
+                }));
+                mesh.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnPointerOverTrigger, function (evt) {
+                    evt.source.renderOutline = true;
+                    evt.source.outlineColor = BABYLON.Color3.Red();
+                    evt.source.outlineWidth = 0.1;
+                }));
+                mesh.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnPointerOutTrigger, function (evt) {
+                    if (evt.source !== selectedMesh) {
+                        evt.source.renderOutline = false;
+                    }
+                }));
+                mesh.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnPickDownTrigger, function (evt) {
+                    if (selectedMesh === evt.source) {
+                        isMoving = true;
+                        camera.detachControl(canvas);
+                    }
+                }));
+                mesh.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnPickUpTrigger, function (evt) {
+                    isMoving = false;
+                    camera.attachControl(canvas);
+                }));
+            }
+        }
+
+        function selectMesh(mesh) {
+            if (selectedMesh) {
+                selectedMesh.renderOutline = false; // Remove outline from previously selected mesh
+            }
+            if (selectedMesh === mesh) {
+                selectedMesh = null; // Deselect if clicking on the same mesh
+                return;
+            }
+            selectedMesh = mesh;
+            selectedMesh.renderOutline = true;
+            selectedMesh.outlineColor = BABYLON.Color3.Red();
+            selectedMesh.outlineWidth = 0.1; // Add outline to the newly selected mesh
+        }
+
+        scene.onPointerObservable.add(function (evt) {
+            if (selectedMesh && isMoving && evt.type === BABYLON.PointerEventTypes.POINTERMOVE) {
+                var pickInfo = scene.pick(scene.pointerX, scene.pointerY, function (mesh) {
+                    return mesh === ground;
+                });
+                if (pickInfo.hit) {
+                    selectedMesh.position.x = pickInfo.pickedPoint.x;
+                    selectedMesh.position.z = pickInfo.pickedPoint.z;
+                }
+            }
+        });
+
+        scene.onPointerDown = function (evt, pickResult) {
+            if (!pickResult.hit) {
+                if (selectedMesh) {
+                    selectedMesh.renderOutline = false;
+                    selectedMesh = null;
+                }
+            }
+        };
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === "Delete" && selectedMesh) {
+                selectedMesh.dispose();
+                selectedMesh = null;
+            }
+        });
+
+        engine.runRenderLoop(function () {
+            scene.render();
+        });
+
+        window.addEventListener("resize", function () {
+            engine.resize();
+        });
+
+    </script>
+</body>
+</html>
