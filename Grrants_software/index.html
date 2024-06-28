@@ -76,7 +76,7 @@
             }
 
             // Import the preview mesh based on the OBJ file path
-            BABYLON.SceneLoader.ImportMesh("Feeding Dish", C:\Users\CLHat\Desktop\Grrants_software\Feeding Dish.obj, shapePath, scene, function (meshes) {
+            BABYLON.SceneLoader.ImportMesh("", "./path/to/your/obj/files/", shapePath, scene, function (meshes) {
                 previewMesh = meshes[0];
                 previewMesh.visibility = 0.5;
                 isDragging = true;
@@ -124,7 +124,7 @@
         // Function to add a shape to the scene
         function addShape(shapePath, position) {
             // Import the final mesh based on the OBJ file path
-            BABYLON.SceneLoader.ImportMesh("Feeding dish", C:\Users\CLHat\Desktop\Grrants_software\Feeding Dish.obj, shapePath, scene, function (meshes) {
+            BABYLON.SceneLoader.ImportMesh("", "./path/to/your/obj/files/", shapePath, scene, function (meshes) {
                 var mesh = meshes[0];
                 mesh.position = position || new BABYLON.Vector3(0, 1, 0);
                 mesh.actionManager = new BABYLON.ActionManager(scene);
